@@ -230,7 +230,19 @@
 
                 <div class="module border-blue-900">
                     <span class="tag" style="color:#0088ff">Neural_Config</span>
-                    <input type="password" id="gemini-key-input" class="api-input" placeholder="PASTE_GEMINI_KEY">
+                    
+                    <select id="neural-key-selector" class="api-select" onchange="handleKeySelect(this.value)">
+                        <option value="">-- SELECT KEY MATRIX --</option>
+                        <option value="AIzaSyAHvqvdSxxr4fJu2o_CbOsxt0bW3Ler6ME">KEY_PRIMARY (6ME)</option>
+                        <option value="AIzaSyC5bYNUhrqwnHc8a2cSQsZqEU0elxutPUw">KEY_SECONDARY (PUw)</option>
+                        <option value="AIzaSyD7qUfDObUbDDQVLVYbX2N_OYVPWbD4-rM">KEY_TERTIARY (4-rM)</option>
+                        <option value="AIzaSyB7qcX5zYnK3Lv60L7jT1rp0_6l4wE6E2o">KEY_QUATERNARY (E2o)</option>
+                        <option value="AIzaSyB2PD48cheEOo46MDIkv0wwkzvcz6_24Ms">KEY_QUINARY (4Ms)</option>
+                        <option value="MANUAL">MANUAL_ENTRY_OVERRIDE</option>
+                    </select>
+
+                    <input type="password" id="gemini-key-input" class="api-input hidden" placeholder="PASTE_MANUAL_KEY">
+                    
                     <select id="gemini-model-select" class="api-select">
                         <option value="models/gemini-2.5-flash">GEMINI 2.5 FLASH</option>
                         <option value="models/gemini-2.0-flash">GEMINI 2.0 FLASH</option>
@@ -298,20 +310,36 @@
             osc.stop(audioCtx.currentTime + 0.1);
         }
 
-        function speak(text) { 
+        function speak(text, isAiResponse = false) { 
             if (!window.speechSynthesis) return; 
             window.speechSynthesis.cancel(); 
             let msg = text.replace(/ML/gi, 'milliliters').replace(/\bM\b/g, 'minutes').replace(/\bOBJ\b/gi, 'objective'); 
             const utter = new SpeechSynthesisUtterance(msg); 
             utter.pitch = 0.5; utter.rate = 1.0; 
+            
+            if (isAiResponse) {
+                utter.onend = () => { startGhostVoice(); };
+            }
+            
             window.speechSynthesis.speak(utter); 
         }
 
-        function pushLog(msg, silent = false) { 
+        function pushLog(msg, silent = false, isAiResponse = false) { 
             const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }); 
             state.logs.push({ts, text: msg}); if(state.logs.length > 25) state.logs.shift(); 
             document.getElementById('log-area').innerHTML = state.logs.map(l => `<div class="log-entry"><span class="log-ts">[${l.ts}]</span> ${l.text}</div>`).join('');
-            if(!silent) speak(msg); saveData();
+            if(!silent) speak(msg, isAiResponse); saveData();
+        }
+
+        function handleKeySelect(val) {
+            const input = document.getElementById('gemini-key-input');
+            if(val === "MANUAL") {
+                input.classList.remove('hidden');
+                input.value = "";
+            } else {
+                input.classList.add('hidden');
+                input.value = val;
+            }
         }
 
         async function askGhost() {
@@ -331,12 +359,21 @@
                         system_instruction: { parts: [{ text: systemIdentity }] }
                     })
                 });
+
                 const data = await resp.json();
+
+                if (!resp.ok) {
+                    const errorDetails = data.error ? `${data.error.status}: ${data.error.message}` : `HTTP_${resp.status}`;
+                    pushLog(`LINK ERROR: ${errorDetails}`, true);
+                    return;
+                }
+
                 const ghostMsg = data.candidates[0].content.parts[0].text.trim();
-                
                 state.shortTermMemory.push({ role: "model", parts: [{ text: ghostMsg }] });
-                pushLog(ghostMsg);
-            } catch(e) { pushLog("LINK ERROR: TRANSMISSION FAILED"); }
+                pushLog(ghostMsg, false, true);
+            } catch(e) { 
+                pushLog(`TRANSMISSION FATAL: ${e.message.toUpperCase()}`, true); 
+            }
         }
 
         function midnightCheck() {
@@ -355,12 +392,7 @@
                 state.bonusAwarded = { water: false, salah: false };
                 state.tasks = state.tasks.filter(t => !t.done);
                 state.lastReset = today;
-                
-                for(let i=0; i<5; i++) {
-                    const cb = document.getElementById(`salah-${i}`);
-                    if(cb) cb.checked = false;
-                }
-                
+                for(let i=0; i<5; i++) { const cb = document.getElementById(`salah-${i}`); if(cb) cb.checked = false; }
                 saveData(); updateUI(); renderTasks();
                 pushLog("DAILY REBOOT: LOGS REFRESHED");
             }
@@ -368,28 +400,22 @@
 
         function checkDailyBonuses() {
             if (state.water >= 4000 && !state.bonusAwarded.water) {
-                state.spentSP -= 199; 
-                state.bonusAwarded.water = true;
+                state.spentSP -= 199; state.bonusAwarded.water = true;
                 pushLog("HYDRATION OVERDRIVE: +199 SP BONUS EARNED");
             }
             const prayedCount = state.salah.filter(s => s === true).length;
             if (prayedCount === 5 && !state.bonusAwarded.salah) {
-                state.spentSP -= 299; 
-                state.bonusAwarded.salah = true;
+                state.spentSP -= 299; state.bonusAwarded.salah = true;
                 pushLog("DIVINE ALIGNMENT: +299 SP BONUS EARNED");
             }
         }
 
         function updateUI() {
-            midnightCheck();
-            checkDailyBonuses();
-            
+            midnightCheck(); checkDailyBonuses();
             if (Date.now() > state.skinExpiry && state.activeSkin !== 'default') { state.activeSkin = 'default'; state.xpMult = 1; loadModel(currentModelIndex); pushLog("SKIN EXPIRED"); }
             const xpLimit = state.lvl * 500;
             if (state.xp >= xpLimit) { state.lvl++; state.xp -= xpLimit; pushLog(`LEVEL UP: REACHED LEVEL ${state.lvl}`); }
-            
             const currentSP = Math.max(0, (state.totalXP * 0.1) - state.spentSP);
-            
             const spLimit = state.lvl * 50;
             document.getElementById('lvl-txt').innerText = state.lvl;
             document.getElementById('xp-txt').innerText = `${Math.floor(state.xp)}/${xpLimit}`;
@@ -401,8 +427,7 @@
             document.getElementById('bar-sp').style.width = Math.min(100, (currentSP / spLimit) * 100) + "%";
             document.getElementById('bar-h2o').style.width = Math.min(100, (state.water / 4000) * 100) + "%";
             document.getElementById('active-model-tag').innerText = state.geminiModel.split('/')[1].toUpperCase();
-            const spine = document.getElementById('hp-spine');
-            spine.innerHTML = "";
+            const spine = document.getElementById('hp-spine'); spine.innerHTML = "";
             for(let i=0; i<45; i++) { const b = document.createElement('div'); b.className = `spine-bit ${i < (state.hp/2.2) ? 'spine-on' : ''}`; spine.appendChild(b); }
             renderShop();
         }
@@ -442,53 +467,20 @@
                 if (manualMins <= 0) { pushLog("ERROR: TIMER NOT INITIATED"); return; }
                 igniteTimer();
             }
-            state.spentSP += 50; 
-            state.challengeActive = type;
-            pushLog(`PURCHASE SUCCESSFUL: ${type.toUpperCase()} ACTIVE`);
-            updateUI();
+            state.spentSP += 50; state.challengeActive = type;
+            pushLog(`PURCHASE SUCCESSFUL: ${type.toUpperCase()} ACTIVE`); updateUI();
         }
 
         function resetTimer() { clearInterval(timer.interval); timer.seconds = 0; timer.active = false; document.getElementById('t-disp').innerText = "00:00"; document.getElementById('ignite-btn').innerText = "IGNITE"; pushLog("CHRONO: CYCLE RESET"); state.challengeActive = null; }
-
         function addTask() { const i = document.getElementById('task-input'); if(i.value.trim()) { state.tasks.push({text: i.value.trim(), done: false}); pushLog(`OBJECTIVE: ${i.value.trim().toUpperCase()} DEPLOYED`); i.value = ""; renderTasks(); } }
         function renderTasks() { document.getElementById('q-list').innerHTML = state.tasks.map((t, i) => `<div class="task-row"><span class="task-text ${t.done?'task-done':''}">${t.text.toUpperCase()}</span><div class="flex gap-4">${t.done ? `<i class="fa-solid fa-rotate-left text-zinc-600 cursor-pointer" onclick="undoTask(${i})"></i>` : `<i class="fa-solid fa-check text-red-600 cursor-pointer" onclick="completeTask(${i})"></i>`}</div></div>`).join(''); }
         function completeTask(idx) { if(!state.tasks[idx].done) { state.tasks[idx].done = true; pushLog(`OBJECTIVE: ${state.tasks[idx].text.toUpperCase()} SECURED`); gainXP(20); renderTasks(); } }
         function undoTask(idx) { if(state.tasks[idx].done) { state.tasks[idx].done = false; state.xp = Math.max(0, state.xp - 20); state.totalXP = Math.max(0, state.totalXP - 20); pushLog(`OBJECTIVE: ${state.tasks[idx].text.toUpperCase()} REOPENED`); updateUI(); renderTasks(); } }
-
-        function buySkin(t, c, m) { 
-            const currentSP = (state.totalXP * 0.1) - state.spentSP;
-            if(currentSP >= c) { 
-                state.spentSP += c; state.activeSkin = t; state.xpMult = m; state.skinExpiry = Date.now() + (30 * 60 * 1000); 
-                pushLog(`PURCHASE SUCCESSFUL: ${t.toUpperCase()} APPLIED`); 
-                loadModel(currentModelIndex); updateUI(); 
-            } else { pushLog("PURCHASE FAILED: INSUFFICIENT SP"); }
-        }
-        
-        function buyShield() { 
-            const currentSP = (state.totalXP * 0.1) - state.spentSP;
-            if(currentSP >= 99) { 
-                state.spentSP += 99; state.shieldExpiry = Date.now() + (24 * 60 * 60 * 1000); 
-                pushLog("PURCHASE SUCCESSFUL: SHIELD ACTIVE"); updateUI(); 
-            } else { pushLog("PURCHASE FAILED: INSUFFICIENT SP"); }
-        }
-
-        function addShopItem() {
-            const n = document.getElementById('shop-name'), c = document.getElementById('shop-cost');
-            if(n.value && c.value) {
-                state.customItems.push({name: n.value, cost: parseInt(c.value)});
-                n.value = ""; c.value = ""; renderShop(); pushLog("MARKET: ITEM LISTED");
-            }
-        }
+        function buySkin(t, c, m) { const currentSP = (state.totalXP * 0.1) - state.spentSP; if(currentSP >= c) { state.spentSP += c; state.activeSkin = t; state.xpMult = m; state.skinExpiry = Date.now() + (30 * 60 * 1000); pushLog(`PURCHASE SUCCESSFUL: ${t.toUpperCase()} APPLIED`); loadModel(currentModelIndex); updateUI(); } else { pushLog("PURCHASE FAILED: INSUFFICIENT SP"); } }
+        function buyShield() { const currentSP = (state.totalXP * 0.1) - state.spentSP; if(currentSP >= 99) { state.spentSP += 99; state.shieldExpiry = Date.now() + (24 * 60 * 60 * 1000); pushLog("PURCHASE SUCCESSFUL: SHIELD ACTIVE"); updateUI(); } else { pushLog("PURCHASE FAILED: INSUFFICIENT SP"); } }
+        function addShopItem() { const n = document.getElementById('shop-name'), c = document.getElementById('shop-cost'); if(n.value && c.value) { state.customItems.push({name: n.value, cost: parseInt(c.value)}); n.value = ""; c.value = ""; renderShop(); pushLog("MARKET: ITEM LISTED"); } }
         function removeShopItem(i) { state.customItems.splice(i, 1); renderShop(); pushLog("MARKET: ITEM REMOVED"); }
-        function buyCustom(i) {
-            const item = state.customItems[i];
-            const currentSP = (state.totalXP * 0.1) - state.spentSP;
-            if(currentSP >= item.cost) {
-                state.spentSP += item.cost;
-                pushLog(`PURCHASE SUCCESSFUL: ${item.name.toUpperCase()}`);
-                updateUI();
-            } else { pushLog("PURCHASE FAILED: INSUFFICIENT SP"); }
-        }
+        function buyCustom(i) { const item = state.customItems[i]; const currentSP = (state.totalXP * 0.1) - state.spentSP; if(currentSP >= item.cost) { state.spentSP += item.cost; pushLog(`PURCHASE SUCCESSFUL: ${item.name.toUpperCase()}`); updateUI(); } else { pushLog("PURCHASE FAILED: INSUFFICIENT SP"); } }
 
         function renderShop() {
             const list = document.getElementById('shop-list');
@@ -521,10 +513,7 @@
             if(s) {
                 state = {...state, ...JSON.parse(s)};
                 if(!state.bonusAwarded) state.bonusAwarded = { water: false, salah: false };
-                state.salah.forEach((val, i) => {
-                    const cb = document.getElementById(`salah-${i}`);
-                    if(cb) cb.checked = val;
-                });
+                state.salah.forEach((val, i) => { const cb = document.getElementById(`salah-${i}`); if(cb) cb.checked = val; });
             } else { state.spentSP = state.totalXP * 0.1; }
             document.getElementById('gemini-key-input').value = state.geminiKey; 
             syncBattery(); updateUI(); init3D(); renderTasks(); renderArchive(); 
@@ -547,7 +536,18 @@
         function renderArchive() { document.getElementById('note-history').innerHTML = state.noteArchive.map(n => `<div class="bg-[#050505] p-2 border-l-2 border-red-600 mb-2 text-[10px]">${n.text}</div>`).join(''); }
         function nuclearReset() { if(prompt("PURGE:")===AUTH_KEY) { localStorage.clear(); location.reload(); } }
         async function syncBattery() { if (!navigator.getBattery) return; const b = await navigator.getBattery(); const upd = () => { document.getElementById('bat').innerText = `PWR: ${Math.round(b.level * 100)}%`; document.getElementById('bat-state').innerText = `Status: ${b.charging ? 'Charging' : 'Discharging'}`; }; upd(); b.addEventListener('levelchange', upd); b.addEventListener('chargingchange', upd); }
-        function startGhostVoice() { const R = window.webkitSpeechRecognition || window.SpeechRecognition; if(!R) return; const r = new R(); const btn = document.getElementById('ghost-mic-btn'); r.onstart = () => { btn.classList.add('mic-active'); if(window.navigator.vibrate) window.navigator.vibrate(30); }; r.onresult = (e) => { document.getElementById('ai-query').value = e.results[0][0].transcript; askGhost(); }; r.onend = () => { btn.classList.remove('mic-active'); }; r.start(); }
+        
+        function startGhostVoice() { 
+            const R = window.webkitSpeechRecognition || window.SpeechRecognition; 
+            if(!R) return; 
+            const r = new R(); 
+            const btn = document.getElementById('ghost-mic-btn'); 
+            r.onstart = () => { btn.classList.add('mic-active'); if(window.navigator.vibrate) window.navigator.vibrate(30); }; 
+            r.onresult = (e) => { document.getElementById('ai-query').value = e.results[0][0].transcript; askGhost(); }; 
+            r.onend = () => { btn.classList.remove('mic-active'); }; 
+            r.start(); 
+        }
+
         function startVoice() { const R = window.webkitSpeechRecognition || window.SpeechRecognition; if(!R) return; const r = new R(); const btn = document.getElementById('mic-btn'); r.onstart = () => { btn.classList.add('mic-active'); if(window.navigator.vibrate) window.navigator.vibrate(30); }; r.onresult = (e) => { document.getElementById('note-input').value += e.results[0][0].transcript; }; r.onend = () => { btn.classList.remove('mic-active'); }; r.start(); }
     </script>
 </body>
