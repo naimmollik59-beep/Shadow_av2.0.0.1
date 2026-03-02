@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>SHADOW_V213_STABILIZED</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        :root { --blood: #ff0000; --shadow-blue: #0088ff; --gold: #ffd700; --aqua: #00f2ff; --dead-black: #000000; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; scrollbar-width: none; }
+        ::-webkit-scrollbar { display: none; }
+
+        body { 
+            background: var(--dead-black); color: #fff; font-family: 'Space Mono', monospace; 
+            height: 100vw; width: 100vh; margin: 0; overflow: hidden; 
+            position: absolute; top: 50%; left: 50%; 
+            transform: translate(-50%, -50%) rotate(90deg); transform-origin: center; 
+            display: flex;
+        }
+
+        #div-alpha { width: 42%; height: 100%; border-right: 1px solid #111; display: flex; flex-direction: column; background: #000; position: relative; }
+        .alpha-header { padding: 10px; z-index: 50; }
+        .alpha-title { font-family: 'Archivo Black'; font-size: 10px; letter-spacing: -0.5px; width: 100px; text-align: center; }
+        
+        .signal-line { height: 1px; background: linear-gradient(90deg, transparent, var(--blood), transparent); position: relative; overflow: hidden; width: 100px; margin-top: 2px; }
+        .signal-line::after { content: ""; position: absolute; width: 50%; height: 100%; background: white; animation: sweep 2s infinite; }
+        @keyframes sweep { from { left: -100%; } to { left: 100%; } }
+
+        .hud-overlay { position: absolute; top: 10px; right: 10px; width: 110px; z-index: 40; pointer-events: none; }
+        .hud-stat { margin-bottom: 8px; }
+        .hud-label { font-size: 7px; font-family: 'Archivo Black'; color: #444; display: flex; justify-content: space-between; text-transform: uppercase; }
+        .hud-bar-bg { height: 4px; background: #111; margin-top: 2px; border: 1px solid #222; position: relative; overflow: hidden; }
+        .hud-fill { height: 100%; transition: width 0.3s; position: absolute; top:0; left:0; }
+
+        #shadow-3d-container { flex-grow: 1; width: 100%; position: relative; z-index: 10; pointer-events: none; }
+
+        .chrono-ui { height: 60px; background: #050505; border-top: 1px solid #151515; display: flex; align-items: center; justify-content: space-between; padding: 0 15px; z-index: 50; }
+        .t-val { font-family: 'Archivo Black'; font-size: 22px; color: var(--blood); letter-spacing: -1px; width: 85px; }
+        .chrono-controls { display: flex; align-items: center; gap: 8px; }
+        .t-input { width: 50px; height: 35px; background: #000; border: 1px solid #222; color: #fff; text-align: center; font-size: 10px; font-family: 'Archivo Black'; }
+        .ignite-btn { height: 35px; padding: 0 10px; background: transparent; border: 1px solid var(--blood); color: var(--blood); font-family: 'Archivo Black'; font-size: 9px; text-transform: uppercase; cursor: pointer; }
+
+        #div-beta { width: 58%; height: 100%; display: flex; flex-direction: column; background: #020202; position: relative; }
+        .sys-header { height: 45px; border-bottom: 1px solid #111; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; background: #080808; flex-shrink: 0; }
+
+        #viewport { flex-grow: 1; overflow-y: auto; padding: 15px; }
+        .pane { display: flex; flex-direction: column; gap: 12px; }
+        .hidden { display: none !important; }
+
+        #log-area { height: 160px; font-size: 9px; color: #555; overflow-y: auto; display: flex; flex-direction: column-reverse; gap: 4px; border-left: 1px solid #222; padding-left: 10px; }
+        .log-entry { border-bottom: 1px solid #111; padding-bottom: 2px; }
+        .log-ts { color: var(--blood); margin-right: 5px; opacity: 0.7; }
+
+        .tasbih-count { font-family: 'Archivo Black'; font-size: 50px; color: var(--gold); display: block; text-align: center; margin: 10px 0; }
+        .tasbih-btn { width: 80px; height: 80px; border-radius: 50%; border: 2px solid var(--gold); background: transparent; color: var(--gold); display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 30px; transition: 0.1s; cursor: pointer; }
+        .tasbih-btn:active { transform: scale(0.9); background: rgba(255, 215, 0, 0.1); }
+        .salah-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin-top: 15px; }
+        .salah-item { border: 1px solid #111; padding: 8px 0; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+        .salah-item label { display: block; font-size: 7px; font-family: 'Archivo Black'; color: #555; text-transform: uppercase; }
+        .salah-check { appearance: none; width: 20px; height: 20px; border: 1px solid #333; background: #000; cursor: pointer; position: relative; }
+        .salah-check:checked { background: var(--blood); border-color: var(--blood); }
+        .salah-check:checked::after { content: '\f00c'; font-family: 'Font Awesome 6 Free'; font-weight: 900; color: #000; font-size: 10px; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+
+        .shop-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #111; font-size: 10px; }
+        .shop-cost { color: var(--shadow-blue) !important; font-weight: bold; }
+        .shop-buy-btn { border: 1px solid var(--blood); color: var(--blood); padding: 4px 8px; font-size: 8px; text-transform: uppercase; font-family: 'Archivo Black'; cursor: pointer; }
+
+        .task-row { display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #0a0a0a; border: 1px solid #222; margin-bottom: 8px; }
+        .task-text { font-size: 10px; font-family: 'Space Mono'; font-weight: bold; text-transform: uppercase; }
+        .task-done { opacity: 0.3; text-decoration: line-through; color: #444; }
+
+        .module { background: #0a0a0a; border: 1px solid #222; padding: 12px; position: relative; }
+        .tag { font-family: 'Archivo Black'; font-size: 8px; color: var(--blood); text-transform: uppercase; margin-bottom: 8px; display: block; letter-spacing: 1px; }
+        .btn-strike { background: var(--blood); color: #000; font-family: 'Archivo Black'; padding: 12px; width: 100%; font-size: 10px; text-transform: uppercase; border: none; cursor: pointer; }
+        
+        #hp-spine { position: absolute; left: 42%; top: 0; height: 100%; width: 4px; display: flex; flex-direction: column; gap: 1px; z-index: 100; border-left: 1px solid #111; }
+        .spine-bit { flex-grow: 1; background: #080808; }
+        .spine-on { background: var(--blood); box-shadow: 0 0 8px var(--blood); }
+
+        nav { height: 65px; display: grid; grid-template-columns: repeat(5, 1fr); background: #000; border-top: 1px solid #111; flex-shrink: 0; }
+        .nav-link { display: flex; align-items: center; justify-content: center; color: #333; font-size: 18px; cursor: pointer; }
+        .nav-link.active { color: var(--blood); }
+
+        .mic-active { color: var(--blood) !important; animation: ghost-pulse 0.8s infinite alternate; filter: drop-shadow(0 0 8px var(--blood)); }
+        @keyframes ghost-pulse { from { transform: scale(1); opacity: 0.5; } to { transform: scale(1.4); opacity: 1; } }
+        
+        .model-switch { position: absolute; bottom: 80px; left: 15px; z-index: 60; background: #111; border: 1px solid var(--blood); color: var(--blood); font-family: 'Archivo Black'; font-size: 8px; padding: 8px 12px; cursor: pointer; text-transform: uppercase; display: flex; align-items: center; gap: 5px; }
+        .model-indicator { width: 8px; height: 8px; border-radius: 50%; background: var(--blood); animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+
+        .api-select { background: #000; border: 1px solid #222; color: #0088ff; font-family: 'Archivo Black'; font-size: 9px; width: 100%; height: 35px; margin-bottom: 8px; }
+        .api-input { background: #000; border: 1px solid #222; color: #fff; font-family: 'Space Mono'; font-size: 10px; width: 100%; height: 35px; margin-bottom: 8px; padding: 0 10px; }
+        .btn-purge { background: #1a0000; border: 1px solid #ff0000; color: #ff0000; font-family: 'Archivo Black'; padding: 15px; width: 100%; font-size: 10px; text-transform: uppercase; cursor: pointer; }
+    </style>
+</head>
+<body onload="bootShadow()">
+
+    <div id="div-alpha">
+        <div class="alpha-header">
+            <h1 class="alpha-title">SHADOW_ALPHA</h1>
+            <div class="signal-line"></div>
+            <div id="bat" class="text-[9px] font-bold text-red-600 mt-1">PWR: --%</div>
+            <div id="bat-state" class="text-[7px] font-bold text-zinc-500 uppercase">Status: --</div>
+        </div>
+
+        <div class="hud-overlay">
+            <div class="hud-stat">
+                <div class="hud-label"><span>LVL</span><span id="lvl-txt">1</span></div>
+                <div class="hud-bar-bg"><div id="bar-lvl" class="hud-fill bg-white" style="width:100%"></div></div>
+            </div>
+            <div class="hud-stat">
+                <div class="hud-label"><span>XP</span><span id="xp-txt">0/500</span></div>
+                <div class="hud-bar-bg"><div id="bar-xp" class="hud-fill bg-[#ffd700]" style="width:0%"></div></div>
+            </div>
+            <div class="hud-stat">
+                <div class="hud-label"><span>SP</span><span id="sp-txt">0/50</span></div>
+                <div class="hud-bar-bg"><div id="bar-sp" class="hud-fill bg-[#0088ff]" style="width:0%"></div></div>
+            </div>
+            <div class="hud-stat">
+                <div class="hud-label"><span>H2O</span><span id="h2o-txt">0/4000</span></div>
+                <div class="hud-bar-bg"><div id="bar-h2o" class="hud-fill bg-[#00f2ff]" style="width:0%"></div></div>
+            </div>
+        </div>
+
+        <div id="shadow-3d-container"></div>
+        
+        <button class="model-switch" onclick="switchModel()">
+            <span class="model-indicator"></span>
+            <span id="model-name">SOLDIER</span>
+        </button>
+
+        <div class="chrono-ui">
+            <div class="t-val" id="t-disp">00:00</div>
+            <div class="chrono-controls">
+                <input type="number" id="t-input" class="t-input" placeholder="MINS">
+                <button class="ignite-btn" onclick="igniteTimer()" id="ignite-btn">IGNITE</button>
+                <i class="fa-solid fa-rotate-right text-[10px] opacity-30 cursor-pointer text-white" onclick="resetTimer()"></i>
+            </div>
+        </div>
+    </div>
+
+    <div id="hp-spine"></div>
+
+    <div id="div-beta">
+        <header class="sys-header">
+            <div id="active-model-tag" class="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Neural_Link_V213</div>
+            <div id="clock" class="text-xs font-bold text-zinc-400">00:00:00 AM</div>
+        </header>
+
+        <main id="viewport">
+            <section id="p-neural" class="pane">
+                <span class="tag">Neural_Link</span>
+                <div class="flex gap-2">
+                    <input type="text" id="ai-query" class="t-input flex-grow text-left px-4" placeholder="Signal thought..." onkeydown="if(event.key==='Enter') askGhost()">
+                    <i id="ghost-mic-btn" onclick="startGhostVoice()" class="fa-solid fa-ghost text-sm opacity-50 cursor-pointer p-2 self-center"></i>
+                    <button onclick="askGhost()" class="ignite-btn">SEND</button>
+                </div>
+                <span class="tag">System_Logs</span>
+                <div id="log-area"></div>
+                <button onclick="triggerPing()" class="btn-strike mt-2">Ping Secondary Node</button>
+            </section>
+
+            <section id="p-vitals" class="pane hidden">
+                <div class="module text-center">
+                    <span class="tag">Hydration Intake</span>
+                    <div class="text-3xl font-black mb-4"><span id="w-v-main">0</span><span class="text-zinc-800 text-sm ml-1">ML</span></div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="logW(250)" class="bg-zinc-900 py-4 text-[10px] font-bold">+250ML</button>
+                        <button onclick="logW(500)" class="bg-zinc-900 py-4 text-[10px] font-bold">+500ML</button>
+                    </div>
+                    <button onclick="undoW()" class="w-full py-2 border border-zinc-800 text-[8px] text-zinc-500 uppercase font-bold mt-2">Undo last drink</button>
+                </div>
+                <div class="module">
+                    <span class="tag">Nutrient Intake</span>
+                    <input type="text" id="meal-input" class="t-input w-full mb-2 text-left px-3" placeholder="Describe intake...">
+                    <button onclick="logMeal()" class="btn-strike">Commit (+50 XP)</button>
+                </div>
+            </section>
+
+            <section id="p-quests" class="pane hidden">
+                <div class="module">
+                    <span class="tag">Daily Objectives</span>
+                    <input type="text" id="task-input" class="t-input w-full mb-2 text-left px-3" placeholder="Target objective...">
+                    <button onclick="addTask()" class="btn-strike">Deploy</button>
+                </div>
+                <div id="q-list" class="mt-2"></div>
+            </section>
+
+            <section id="p-bolt" class="pane hidden">
+                <div class="module">
+                    <span class="tag">Black_Market</span>
+                    <div class="flex gap-1 mb-4">
+                        <input type="text" id="shop-name" class="t-input flex-grow text-left px-2" placeholder="Item Name">
+                        <input type="number" id="shop-cost" class="t-input w-16" placeholder="SP">
+                        <button onclick="addShopItem()" class="ignite-btn">Add</button>
+                    </div>
+                    <div id="shop-list" class="divide-y divide-zinc-900"></div>
+                </div>
+            </section>
+
+            <section id="p-char" class="pane hidden">
+                <div class="module">
+                    <span class="tag">Tasbih_Protocol</span>
+                    <span id="tasbih-val" class="tasbih-count">0</span>
+                    <button class="tasbih-btn" onclick="incTasbih()"><i class="fa-solid fa-fingerprint"></i></button>
+                    <div class="flex justify-center mb-4"><i class="fa-solid fa-rotate-left opacity-30 text-xs cursor-pointer text-white" onclick="resetTasbih()"></i></div>
+                    <div class="salah-grid">
+                        <div class="salah-item"><label>Fajr</label><input type="checkbox" class="salah-check" id="salah-0" onchange="markSalah(0)"></div>
+                        <div class="salah-item"><label>Dhuhr</label><input type="checkbox" class="salah-check" id="salah-1" onchange="markSalah(1)"></div>
+                        <div class="salah-item"><label>Asr</label><input type="checkbox" class="salah-check" id="salah-2" onchange="markSalah(2)"></div>
+                        <div class="salah-item"><label>Maghrib</label><input type="checkbox" class="salah-check" id="salah-3" onchange="markSalah(3)"></div>
+                        <div class="salah-item"><label>Isha</label><input type="checkbox" class="salah-check" id="salah-4" onchange="markSalah(4)"></div>
+                    </div>
+                </div>
+                <div class="module">
+                    <span class="tag">Neural_Archive</span>
+                    <textarea id="note-input" class="w-full h-24 bg-black border border-zinc-900 p-2 text-xs text-white outline-none mb-1" placeholder="Record entry..."></textarea>
+                    <div class="flex gap-2">
+                        <button id="mic-btn" onclick="startVoice()" class="btn-strike !bg-zinc-900 !text-white !w-auto px-4"><i class="fa-solid fa-microphone"></i></button>
+                        <button onclick="archiveNote()" class="btn-strike !bg-blue-900 !text-white">Archive Data</button>
+                    </div>
+                    <div id="note-history" class="mt-4"></div>
+                </div>
+
+                <div class="module border-blue-900">
+                    <span class="tag" style="color:#0088ff">Neural_Config</span>
+                    <input type="password" id="gemini-key-input" class="api-input" placeholder="PASTE_GEMINI_KEY">
+                    <select id="gemini-model-select" class="api-select">
+                        <option value="models/gemini-2.5-flash">GEMINI 2.5 FLASH</option>
+                        <option value="models/gemini-2.0-flash">GEMINI 2.0 FLASH</option>
+                    </select>
+                    <button onclick="lockShadowLink()" class="btn-strike !bg-blue-600 !text-white">Lock Shadow</button>
+                </div>
+
+                <button onclick="nuclearReset()" class="btn-purge">WIPE SYSTEM DATA</button>
+            </section>
+        </main>
+
+        <nav>
+            <button onclick="tabSwitch('neural', this)" class="nav-link active"><i class="fa-solid fa-ghost"></i></button>
+            <button onclick="tabSwitch('vitals', this)" class="nav-link"><i class="fa-solid fa-droplet"></i></button>
+            <button onclick="tabSwitch('quests', this)" class="nav-link"><i class="fa-solid fa-crosshairs"></i></button>
+            <button onclick="tabSwitch('bolt', this)" class="nav-link"><i class="fa-solid fa-bolt"></i></button>
+            <button onclick="tabSwitch('char', this)" class="nav-link"><i class="fa-solid fa-skull"></i></button>
+        </nav>
+    </div>
+
+    <script>
+        const AUTH_KEY = "1420";
+        let state = { 
+            lvl: 1, xp: 0, totalXP: 0, spentSP: 0, water: 0, lastW: 0, hp: 100, 
+            tasks: [], logs: [], noteArchive: [], tasbih: 0, 
+            salah: [false, false, false, false, false],
+            activeSkin: 'default', xpMult: 1, skinExpiry: 0,
+            geminiKey: "", geminiModel: "models/gemini-2.5-flash",
+            customItems: [], shieldExpiry: 0, lastReset: 0, challengeActive: null,
+            shortTermMemory: [],
+            bonusAwarded: { water: false, salah: false }
+        };
+
+        let timer = { seconds: 0, active: false, interval: null };
+        let currentModel = null, scene, camera, renderer, currentModelIndex = 0;
+        
+        const modelUrls = [
+            { 
+                name: 'SOLDIER', 
+                url: 'https://threejs.org/examples/models/gltf/Soldier.glb', 
+                scale: 2.4, 
+                posY: -2.5, 
+                color: 0xff0000, 
+                prompt: "Identity: Tactical Commander. I am the commander, Sunless is my subordinate. I give orders. Short, blunt, authoritative. No fluff. Max 12 words." 
+            },
+            { 
+                name: 'SHADOW', 
+                url: 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/LeePerrySmith/LeePerrySmith.glb', 
+                scale: 0.4, 
+                posY: -0.2, 
+                color: 0x004444, 
+                prompt: "Identity: Your Shadow. I am Sunless's loyal, obedient companion. I speak in poetic, caring whispers. I am under Sunless's absolute control. Devoted and artistic. Max 15 words." 
+            }
+        ];
+
+        const skinColors = { default: 0xff0000, gold: 0xffd700, diamond: 0x00f2ff, platinum: 0xe5e4e2 };
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function beep() {
+            const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.type = "sine"; osc.frequency.value = 800;
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            osc.start(); gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.1);
+            osc.stop(audioCtx.currentTime + 0.1);
+        }
+
+        function speak(text) { 
+            if (!window.speechSynthesis) return; 
+            window.speechSynthesis.cancel(); 
+            let msg = text.replace(/ML/gi, 'milliliters').replace(/\bM\b/g, 'minutes').replace(/\bOBJ\b/gi, 'objective'); 
+            const utter = new SpeechSynthesisUtterance(msg); 
+            utter.pitch = 0.5; utter.rate = 1.0; 
+            window.speechSynthesis.speak(utter); 
+        }
+
+        function pushLog(msg, silent = false) { 
+            const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }); 
+            state.logs.push({ts, text: msg}); if(state.logs.length > 25) state.logs.shift(); 
+            document.getElementById('log-area').innerHTML = state.logs.map(l => `<div class="log-entry"><span class="log-ts">[${l.ts}]</span> ${l.text}</div>`).join('');
+            if(!silent) speak(msg); saveData();
+        }
+
+        async function askGhost() {
+            const input = document.getElementById('ai-query'); const query = input.value.trim();
+            if(!query || !state.geminiKey) { pushLog(state.geminiKey ? "SIGNAL EMPTY" : "LINK KEY MISSING"); return; }
+            input.value = ""; pushLog(`OUTGOING: ${query.toUpperCase()}`, true);
+            
+            state.shortTermMemory.push({ role: "user", parts: [{ text: query }] });
+            if(state.shortTermMemory.length > 20) state.shortTermMemory.shift();
+
+            try {
+                const systemIdentity = `${modelUrls[currentModelIndex].prompt} Recipient: Sunless. Context Awareness: Deep. Remember previous dialogue flow.`;
+                const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/${state.geminiModel}:generateContent?key=${state.geminiKey}`, {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ 
+                        contents: state.shortTermMemory,
+                        system_instruction: { parts: [{ text: systemIdentity }] }
+                    })
+                });
+                const data = await resp.json();
+                const ghostMsg = data.candidates[0].content.parts[0].text.trim();
+                
+                state.shortTermMemory.push({ role: "model", parts: [{ text: ghostMsg }] });
+                pushLog(ghostMsg);
+            } catch(e) { pushLog("LINK ERROR: TRANSMISSION FAILED"); }
+        }
+
+        function midnightCheck() {
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+            if (state.lastReset < today) {
+                let penalty = 0;
+                if (Date.now() > state.shieldExpiry) {
+                    const waterShort = Math.max(0, 4000 - state.water);
+                    penalty += Math.floor(waterShort / 1000) * 50;
+                    const missedPrayers = state.salah.filter(s => !s).length;
+                    penalty += missedPrayers * 20;
+                    if (penalty > 0) { state.spentSP += penalty; pushLog(`SYSTEM PURGE: -${penalty} SP PENALTY APPLIED`); }
+                } else { pushLog("SHIELD ACTIVE: PENALTY NEGATED"); }
+                state.water = 0; state.salah = [false, false, false, false, false];
+                state.bonusAwarded = { water: false, salah: false };
+                state.tasks = state.tasks.filter(t => !t.done);
+                state.lastReset = today;
+                
+                for(let i=0; i<5; i++) {
+                    const cb = document.getElementById(`salah-${i}`);
+                    if(cb) cb.checked = false;
+                }
+                
+                saveData(); updateUI(); renderTasks();
+                pushLog("DAILY REBOOT: LOGS REFRESHED");
+            }
+        }
+
+        function checkDailyBonuses() {
+            if (state.water >= 4000 && !state.bonusAwarded.water) {
+                state.spentSP -= 199; 
+                state.bonusAwarded.water = true;
+                pushLog("HYDRATION OVERDRIVE: +199 SP BONUS EARNED");
+            }
+            const prayedCount = state.salah.filter(s => s === true).length;
+            if (prayedCount === 5 && !state.bonusAwarded.salah) {
+                state.spentSP -= 299; 
+                state.bonusAwarded.salah = true;
+                pushLog("DIVINE ALIGNMENT: +299 SP BONUS EARNED");
+            }
+        }
+
+        function updateUI() {
+            midnightCheck();
+            checkDailyBonuses();
+            
+            if (Date.now() > state.skinExpiry && state.activeSkin !== 'default') { state.activeSkin = 'default'; state.xpMult = 1; loadModel(currentModelIndex); pushLog("SKIN EXPIRED"); }
+            const xpLimit = state.lvl * 500;
+            if (state.xp >= xpLimit) { state.lvl++; state.xp -= xpLimit; pushLog(`LEVEL UP: REACHED LEVEL ${state.lvl}`); }
+            
+            const currentSP = Math.max(0, (state.totalXP * 0.1) - state.spentSP);
+            
+            const spLimit = state.lvl * 50;
+            document.getElementById('lvl-txt').innerText = state.lvl;
+            document.getElementById('xp-txt').innerText = `${Math.floor(state.xp)}/${xpLimit}`;
+            document.getElementById('sp-txt').innerText = `${currentSP.toFixed(1)}/${spLimit}`;
+            document.getElementById('w-v-main').innerText = state.water;
+            document.getElementById('h2o-txt').innerText = `${state.water}/4000`;
+            document.getElementById('tasbih-val').innerText = state.tasbih;
+            document.getElementById('bar-xp').style.width = Math.min(100, (state.xp / xpLimit) * 100) + "%";
+            document.getElementById('bar-sp').style.width = Math.min(100, (currentSP / spLimit) * 100) + "%";
+            document.getElementById('bar-h2o').style.width = Math.min(100, (state.water / 4000) * 100) + "%";
+            document.getElementById('active-model-tag').innerText = state.geminiModel.split('/')[1].toUpperCase();
+            const spine = document.getElementById('hp-spine');
+            spine.innerHTML = "";
+            for(let i=0; i<45; i++) { const b = document.createElement('div'); b.className = `spine-bit ${i < (state.hp/2.2) ? 'spine-on' : ''}`; spine.appendChild(b); }
+            renderShop();
+        }
+
+        function igniteTimer() {
+            const btn = document.getElementById('ignite-btn'), input = document.getElementById('t-input');
+            if (timer.active) { 
+                clearInterval(timer.interval); timer.active = false; btn.innerText = "RESUME"; 
+                if(state.challengeActive) { state.spentSP += 50; pushLog("CHALLENGE FAILED: -50 SP"); state.challengeActive = null; }
+                else { pushLog("CHRONO: CYCLE PAUSED"); }
+                return; 
+            }
+            if (timer.seconds <= 0) {
+                const mins = parseInt(input.value) || 0; if (mins <= 0) return;
+                timer.seconds = mins * 60; input.value = "";
+                pushLog(`CHRONO: ${mins} MINUTES CYCLE STARTED`);
+            } else { pushLog("CHRONO: CYCLE RESUMED"); }
+            timer.active = true; btn.innerText = "PAUSE";
+            timer.interval = setInterval(() => {
+                timer.seconds--;
+                if (timer.seconds <= 0) { 
+                    clearInterval(timer.interval); timer.active = false; btn.innerText = "IGNITE"; 
+                    if(state.challengeActive) { state.spentSP -= 100; pushLog("CHALLENGE COMPLETE: +100 SP BONUS"); state.challengeActive = null; }
+                    else { pushLog("CHRONO: CYCLE COMPLETE"); }
+                    updateUI();
+                }
+                const m = Math.floor(timer.seconds/60), s = timer.seconds%60;
+                document.getElementById('t-disp').innerText = `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+            }, 1000);
+        }
+
+        function buyChallenge(type) {
+            const currentSP = (state.totalXP * 0.1) - state.spentSP;
+            if (currentSP < 50) { pushLog("PURCHASE FAILED: INSUFFICIENT SP"); return; }
+            if (timer.seconds <= 0 && !timer.active) {
+                const manualMins = parseInt(document.getElementById('t-input').value) || 0;
+                if (manualMins <= 0) { pushLog("ERROR: TIMER NOT INITIATED"); return; }
+                igniteTimer();
+            }
+            state.spentSP += 50; 
+            state.challengeActive = type;
+            pushLog(`PURCHASE SUCCESSFUL: ${type.toUpperCase()} ACTIVE`);
+            updateUI();
+        }
+
+        function resetTimer() { clearInterval(timer.interval); timer.seconds = 0; timer.active = false; document.getElementById('t-disp').innerText = "00:00"; document.getElementById('ignite-btn').innerText = "IGNITE"; pushLog("CHRONO: CYCLE RESET"); state.challengeActive = null; }
+
+        function addTask() { const i = document.getElementById('task-input'); if(i.value.trim()) { state.tasks.push({text: i.value.trim(), done: false}); pushLog(`OBJECTIVE: ${i.value.trim().toUpperCase()} DEPLOYED`); i.value = ""; renderTasks(); } }
+        function renderTasks() { document.getElementById('q-list').innerHTML = state.tasks.map((t, i) => `<div class="task-row"><span class="task-text ${t.done?'task-done':''}">${t.text.toUpperCase()}</span><div class="flex gap-4">${t.done ? `<i class="fa-solid fa-rotate-left text-zinc-600 cursor-pointer" onclick="undoTask(${i})"></i>` : `<i class="fa-solid fa-check text-red-600 cursor-pointer" onclick="completeTask(${i})"></i>`}</div></div>`).join(''); }
+        function completeTask(idx) { if(!state.tasks[idx].done) { state.tasks[idx].done = true; pushLog(`OBJECTIVE: ${state.tasks[idx].text.toUpperCase()} SECURED`); gainXP(20); renderTasks(); } }
+        function undoTask(idx) { if(state.tasks[idx].done) { state.tasks[idx].done = false; state.xp = Math.max(0, state.xp - 20); state.totalXP = Math.max(0, state.totalXP - 20); pushLog(`OBJECTIVE: ${state.tasks[idx].text.toUpperCase()} REOPENED`); updateUI(); renderTasks(); } }
+
+        function buySkin(t, c, m) { 
+            const currentSP = (state.totalXP * 0.1) - state.spentSP;
+            if(currentSP >= c) { 
+                state.spentSP += c; state.activeSkin = t; state.xpMult = m; state.skinExpiry = Date.now() + (30 * 60 * 1000); 
+                pushLog(`PURCHASE SUCCESSFUL: ${t.toUpperCase()} APPLIED`); 
+                loadModel(currentModelIndex); updateUI(); 
+            } else { pushLog("PURCHASE FAILED: INSUFFICIENT SP"); }
+        }
+        
+        function buyShield() { 
+            const currentSP = (state.totalXP * 0.1) - state.spentSP;
+            if(currentSP >= 99) { 
+                state.spentSP += 99; state.shieldExpiry = Date.now() + (24 * 60 * 60 * 1000); 
+                pushLog("PURCHASE SUCCESSFUL: SHIELD ACTIVE"); updateUI(); 
+            } else { pushLog("PURCHASE FAILED: INSUFFICIENT SP"); }
+        }
+
+        function addShopItem() {
+            const n = document.getElementById('shop-name'), c = document.getElementById('shop-cost');
+            if(n.value && c.value) {
+                state.customItems.push({name: n.value, cost: parseInt(c.value)});
+                n.value = ""; c.value = ""; renderShop(); pushLog("MARKET: ITEM LISTED");
+            }
+        }
+        function removeShopItem(i) { state.customItems.splice(i, 1); renderShop(); pushLog("MARKET: ITEM REMOVED"); }
+        function buyCustom(i) {
+            const item = state.customItems[i];
+            const currentSP = (state.totalXP * 0.1) - state.spentSP;
+            if(currentSP >= item.cost) {
+                state.spentSP += item.cost;
+                pushLog(`PURCHASE SUCCESSFUL: ${item.name.toUpperCase()}`);
+                updateUI();
+            } else { pushLog("PURCHASE FAILED: INSUFFICIENT SP"); }
+        }
+
+        function renderShop() {
+            const list = document.getElementById('shop-list');
+            const defaultItems = `
+                <div class="shop-item"><div><span class="text-yellow-500 font-bold">Gold Skin</span><br><span class="opacity-30 text-[8px]">XP x2 | 30 MINS</span></div><div class="flex items-center gap-3"><span class="shop-cost">50 SP</span><button onclick="buySkin('gold', 50, 2)" class="shop-buy-btn">Apply</button></div></div>
+                <div class="shop-item"><div><span class="text-cyan-400 font-bold">Diamond Skin</span><br><span class="opacity-30 text-[8px]">XP x3 | 30 MINS</span></div><div class="flex items-center gap-3"><span class="shop-cost">100 SP</span><button onclick="buySkin('diamond', 100, 3)" class="shop-buy-btn">Apply</button></div></div>
+                <div class="shop-item"><div><span class="text-zinc-300 font-bold">Platinum Skin</span><br><span class="opacity-30 text-[8px]">XP x4 | 30 MINS</span></div><div class="flex items-center gap-3"><span class="shop-cost">200 SP</span><button onclick="buySkin('platinum', 200, 4)" class="shop-buy-btn">Apply</button></div></div>
+                <div class="shop-item"><div><span class="text-blue-400 font-bold">Shield 🛡️</span><br><span class="opacity-30 text-[8px]">NO SP LOSS | 24H</span></div><div class="flex items-center gap-3"><span class="shop-cost">99 SP</span><button onclick="buyShield()" class="shop-buy-btn">Equip</button></div></div>
+                <div class="shop-item"><div><span class="text-red-500 font-bold">Focus Mode</span><br><span class="opacity-30 text-[8px]">DEPOSIT 50 | GAIN 100</span></div><div class="flex items-center gap-3"><span class="shop-cost">50 SP</span><button onclick="buyChallenge('focus')" class="shop-buy-btn">Start</button></div></div>
+                <div class="shop-item"><div><span class="text-green-500 font-bold">Exercise</span><br><span class="opacity-30 text-[8px]">DEPOSIT 50 | GAIN 100</span></div><div class="flex items-center gap-3"><span class="shop-cost">50 SP</span><button onclick="buyChallenge('exercise')" class="shop-buy-btn">Start</button></div></div>`;
+            const customItems = state.customItems.map((item, i) => `<div class="shop-item"><div><span class="text-white font-bold">${item.name.toUpperCase()}</span></div><div class="flex items-center gap-3"><span class="shop-cost">${item.cost} SP</span><button onclick="buyCustom(${i})" class="shop-buy-btn">Buy</button><i class="fa-solid fa-trash text-[10px] text-zinc-800 cursor-pointer" onclick="removeShopItem(${i})"></i></div></div>`).join('');
+            list.innerHTML = defaultItems + customItems;
+        }
+
+        function loadModel(idx) {
+            if (currentModel) scene.remove(currentModel);
+            const info = modelUrls[idx]; document.getElementById('model-name').innerText = info.name;
+            new THREE.GLTFLoader().load(info.url, (g) => { 
+                currentModel = g.scene; currentModel.scale.set(info.scale, info.scale, info.scale); currentModel.position.y = info.posY;
+                currentModel.traverse((c) => { if (c.isMesh) { c.material = new THREE.MeshPhongMaterial({ color: 0x050505, emissive: skinColors[state.activeSkin], wireframe: true, transparent: true, opacity: 0.6 }); } });
+                scene.add(currentModel);
+            });
+        }
+
+        function switchModel() { currentModelIndex = (currentModelIndex + 1) % modelUrls.length; loadModel(currentModelIndex); if(window.navigator.vibrate) window.navigator.vibrate(50); pushLog(`SYSTEM: ${modelUrls[currentModelIndex].name} ACTIVE`); }
+        function init3D() { const container = document.getElementById('shadow-3d-container'); scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(45, container.clientWidth/container.clientHeight, 0.1, 1000); renderer = new THREE.WebGLRenderer({alpha:true, antialias:true}); renderer.setSize(container.clientWidth, container.clientHeight); container.appendChild(renderer.domElement); scene.add(new THREE.AmbientLight(0x404040, 2)); const l = new THREE.PointLight(0xff0000, 2.5); l.position.set(2, 2, 5); scene.add(l); loadModel(0); camera.position.z = 7; function anim(){ requestAnimationFrame(anim); if(currentModel) currentModel.rotation.y += 0.005; renderer.render(scene, camera); } anim(); }
+        
+        function bootShadow() { 
+            const s = localStorage.getItem("SHADOW_CORE_V213"); 
+            if(s) {
+                state = {...state, ...JSON.parse(s)};
+                if(!state.bonusAwarded) state.bonusAwarded = { water: false, salah: false };
+                state.salah.forEach((val, i) => {
+                    const cb = document.getElementById(`salah-${i}`);
+                    if(cb) cb.checked = val;
+                });
+            } else { state.spentSP = state.totalXP * 0.1; }
+            document.getElementById('gemini-key-input').value = state.geminiKey; 
+            syncBattery(); updateUI(); init3D(); renderTasks(); renderArchive(); 
+            setInterval(() => { const now = new Date(); document.getElementById('clock').innerText = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }); midnightCheck(); }, 1000); 
+            pushLog("SYSTEM ONLINE", true); 
+        }
+
+        function tabSwitch(p, btn) { document.querySelectorAll('.pane').forEach(el => el.classList.add('hidden')); document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active')); document.getElementById('p-'+p).classList.remove('hidden'); btn.classList.add('active'); }
+        function lockShadowLink() { const k = document.getElementById('gemini-key-input').value; if(prompt("AUTH:")===AUTH_KEY){ state.geminiKey=k; state.geminiModel=document.getElementById('gemini-model-select').value; saveData(); pushLog("LINK LOCKED"); } }
+        function saveData() { localStorage.setItem("SHADOW_CORE_V213", JSON.stringify(state)); }
+        function gainXP(a) { let gain = a * state.xpMult; state.xp += gain; state.totalXP += gain; updateUI(); }
+        function logW(ml) { state.water = Math.min(4500, state.water+ml); state.lastW = ml; pushLog(`INTAKE: ${ml}ML`); gainXP(ml/10); updateUI(); }
+        function undoW() { if(state.lastW>0) { state.water-=state.lastW; state.xp-=(state.lastW/10); state.totalXP-=(state.lastW/10); state.lastW=0; updateUI(); pushLog("INTAKE: REVERSED"); } }
+        function logMeal() { const i = document.getElementById('meal-input'); if(!i.value.trim()) return; pushLog(`NUTRIENT: ${i.value.trim().toUpperCase()}`); gainXP(50); i.value = ""; }
+        function incTasbih() { state.tasbih++; document.getElementById('tasbih-val').innerText = state.tasbih; gainXP(0.1); beep(); if(window.navigator.vibrate) window.navigator.vibrate(25); saveData(); }
+        function resetTasbih() { state.tasbih = 0; pushLog("TASBIH: RESET"); updateUI(); }
+        function markSalah(idx) { const names = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]; state.salah[idx] = document.getElementById(`salah-${idx}`).checked; if(state.salah[idx]) { gainXP(20); pushLog(`${names[idx].toUpperCase()} SECURED`); } else { state.xp = Math.max(0, state.xp - 20); state.totalXP = Math.max(0, state.totalXP - 20); pushLog(`${names[idx].toUpperCase()} REVOKED`); } updateUI(); }
+        function triggerPing() { fetch('https://trigger.macrodroid.com/77323e70-8c5b-4a14-a355-e2ac57672a2d/ping', {mode: 'no-cors'}); pushLog("NODE PINGED"); }
+        function archiveNote() { const i = document.getElementById('note-input'); if(i.value) { state.noteArchive.unshift({text: i.value, date: new Date().toLocaleString()}); i.value=""; renderArchive(); pushLog("DATA ARCHIVED"); } }
+        function renderArchive() { document.getElementById('note-history').innerHTML = state.noteArchive.map(n => `<div class="bg-[#050505] p-2 border-l-2 border-red-600 mb-2 text-[10px]">${n.text}</div>`).join(''); }
+        function nuclearReset() { if(prompt("PURGE:")===AUTH_KEY) { localStorage.clear(); location.reload(); } }
+        async function syncBattery() { if (!navigator.getBattery) return; const b = await navigator.getBattery(); const upd = () => { document.getElementById('bat').innerText = `PWR: ${Math.round(b.level * 100)}%`; document.getElementById('bat-state').innerText = `Status: ${b.charging ? 'Charging' : 'Discharging'}`; }; upd(); b.addEventListener('levelchange', upd); b.addEventListener('chargingchange', upd); }
+        function startGhostVoice() { const R = window.webkitSpeechRecognition || window.SpeechRecognition; if(!R) return; const r = new R(); const btn = document.getElementById('ghost-mic-btn'); r.onstart = () => { btn.classList.add('mic-active'); if(window.navigator.vibrate) window.navigator.vibrate(30); }; r.onresult = (e) => { document.getElementById('ai-query').value = e.results[0][0].transcript; askGhost(); }; r.onend = () => { btn.classList.remove('mic-active'); }; r.start(); }
+        function startVoice() { const R = window.webkitSpeechRecognition || window.SpeechRecognition; if(!R) return; const r = new R(); const btn = document.getElementById('mic-btn'); r.onstart = () => { btn.classList.add('mic-active'); if(window.navigator.vibrate) window.navigator.vibrate(30); }; r.onresult = (e) => { document.getElementById('note-input').value += e.results[0][0].transcript; }; r.onend = () => { btn.classList.remove('mic-active'); }; r.start(); }
+    </script>
+</body>
+</html>
