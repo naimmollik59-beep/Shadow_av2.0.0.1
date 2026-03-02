@@ -231,17 +231,17 @@
                 <div class="module border-blue-900">
                     <span class="tag" style="color:#0088ff">Neural_Config</span>
                     
-                    <select id="neural-key-selector" class="api-select" onchange="handleKeySelect(this.value)">
-                        <option value="">-- SELECT KEY MATRIX --</option>
-                        <option value="AIzaSyAHvqvdSxxr4fJu2o_CbOsxt0bW3Ler6ME">KEY_PRIMARY (6ME)</option>
-                        <option value="AIzaSyC5bYNUhrqwnHc8a2cSQsZqEU0elxutPUw">KEY_SECONDARY (PUw)</option>
-                        <option value="AIzaSyD7qUfDObUbDDQVLVYbX2N_OYVPWbD4-rM">KEY_TERTIARY (4-rM)</option>
-                        <option value="AIzaSyB7qcX5zYnK3Lv60L7jT1rp0_6l4wE6E2o">KEY_QUATERNARY (E2o)</option>
-                        <option value="AIzaSyB2PD48cheEOo46MDIkv0wwkzvcz6_24Ms">KEY_QUINARY (4Ms)</option>
-                        <option value="MANUAL">MANUAL_ENTRY_OVERRIDE</option>
-                    </select>
+                    <div class="flex gap-2 mb-2">
+                        <select id="key-vault-dropdown" class="api-select flex-grow" onchange="selectStoredKey(this.value)">
+                            <option value="">-- SELECT STORED KEY --</option>
+                        </select>
+                        <button onclick="deleteCurrentKey()" class="ignite-btn !border-red-600 !text-red-600"><i class="fa-solid fa-trash"></i></button>
+                    </div>
 
-                    <input type="password" id="gemini-key-input" class="api-input hidden" placeholder="PASTE_MANUAL_KEY">
+                    <div class="flex gap-2">
+                        <input type="password" id="gemini-key-input" class="api-input flex-grow" placeholder="INPUT NEW KEY MATRIX">
+                        <button onclick="addKeyToVault()" class="ignite-btn !border-blue-500 !text-blue-500">ADD</button>
+                    </div>
                     
                     <select id="gemini-model-select" class="api-select">
                         <option value="models/gemini-2.5-flash">GEMINI 2.5 FLASH</option>
@@ -271,6 +271,7 @@
             salah: [false, false, false, false, false],
             activeSkin: 'default', xpMult: 1, skinExpiry: 0,
             geminiKey: "", geminiModel: "models/gemini-2.5-flash",
+            keyVault: [], // Array of stored keys
             customItems: [], shieldExpiry: 0, lastReset: 0, challengeActive: null,
             shortTermMemory: [],
             bonusAwarded: { water: false, salah: false }
@@ -280,22 +281,8 @@
         let currentModel = null, scene, camera, renderer, currentModelIndex = 0;
         
         const modelUrls = [
-            { 
-                name: 'SOLDIER', 
-                url: 'https://threejs.org/examples/models/gltf/Soldier.glb', 
-                scale: 2.4, 
-                posY: -2.5, 
-                color: 0xff0000, 
-                prompt: "Identity: Tactical Commander. I am the commander, Sunless is my subordinate. I give orders. Short, blunt, authoritative. No fluff. Max 12 words." 
-            },
-            { 
-                name: 'SHADOW', 
-                url: 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/LeePerrySmith/LeePerrySmith.glb', 
-                scale: 0.4, 
-                posY: -0.2, 
-                color: 0x004444, 
-                prompt: "Identity: Your Shadow. I am Sunless's loyal, obedient companion. I speak in poetic, caring whispers. I am under Sunless's absolute control. Devoted and artistic. Max 15 words." 
-            }
+            { name: 'SOLDIER', url: 'https://threejs.org/examples/models/gltf/Soldier.glb', scale: 2.4, posY: -2.5, color: 0xff0000, prompt: "Identity: Tactical Commander. I am the commander, Sunless is my subordinate. I give orders. Short, blunt, authoritative. No fluff. Max 12 words." },
+            { name: 'SHADOW', url: 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/LeePerrySmith/LeePerrySmith.glb', scale: 0.4, posY: -0.2, color: 0x004444, prompt: "Identity: Your Shadow. I am Sunless's loyal, obedient companion. I speak in poetic, caring whispers. I am under Sunless's absolute control. Devoted and artistic. Max 15 words." }
         ];
 
         const skinColors = { default: 0xff0000, gold: 0xffd700, diamond: 0x00f2ff, platinum: 0xe5e4e2 };
@@ -310,6 +297,7 @@
             osc.stop(audioCtx.currentTime + 0.1);
         }
 
+        // AUTO-MIC PROTOCOL INTEGRATION
         function speak(text, isAiResponse = false) { 
             if (!window.speechSynthesis) return; 
             window.speechSynthesis.cancel(); 
@@ -320,7 +308,6 @@
             if (isAiResponse) {
                 utter.onend = () => { startGhostVoice(); };
             }
-            
             window.speechSynthesis.speak(utter); 
         }
 
@@ -331,15 +318,52 @@
             if(!silent) speak(msg, isAiResponse); saveData();
         }
 
-        function handleKeySelect(val) {
-            const input = document.getElementById('gemini-key-input');
-            if(val === "MANUAL") {
-                input.classList.remove('hidden');
-                input.value = "";
-            } else {
-                input.classList.add('hidden');
-                input.value = val;
+        // DYNAMIC KEY VAULT SYSTEM
+        function addKeyToVault() {
+            const keyInput = document.getElementById('gemini-key-input');
+            const newKey = keyInput.value.trim();
+            if (!newKey) return;
+            if (!state.keyVault) state.keyVault = [];
+            if (!state.keyVault.includes(newKey)) {
+                state.keyVault.push(newKey);
+                pushLog("VAULT: NEW KEY MATRIX ADDED");
+                updateKeyDropdown();
+                keyInput.value = "";
+                saveData();
             }
+        }
+
+        function updateKeyDropdown() {
+            const dropdown = document.getElementById('key-vault-dropdown');
+            dropdown.innerHTML = '<option value="">-- SELECT STORED KEY --</option>';
+            if (state.keyVault) {
+                state.keyVault.forEach((k, idx) => {
+                    const option = document.createElement('option');
+                    option.value = k;
+                    option.textContent = `KEY_${idx + 1} (...${k.slice(-4)})`;
+                    if (k === state.geminiKey) option.selected = true;
+                    dropdown.appendChild(option);
+                });
+            }
+        }
+
+        function selectStoredKey(val) {
+            if (val) {
+                state.geminiKey = val;
+                document.getElementById('gemini-key-input').value = val;
+                pushLog("SYSTEM: KEY LOADED FROM VAULT");
+                saveData();
+            }
+        }
+
+        function deleteCurrentKey() {
+            if (!state.geminiKey) return;
+            state.keyVault = state.keyVault.filter(k => k !== state.geminiKey);
+            state.geminiKey = "";
+            document.getElementById('gemini-key-input').value = "";
+            pushLog("VAULT: KEY REMOVED");
+            updateKeyDropdown();
+            saveData();
         }
 
         async function askGhost() {
@@ -362,17 +386,18 @@
 
                 const data = await resp.json();
 
+                // EXACT ERROR REPORTING
                 if (!resp.ok) {
-                    const errorDetails = data.error ? `${data.error.status}: ${data.error.message}` : `HTTP_${resp.status}`;
-                    pushLog(`LINK ERROR: ${errorDetails}`, true);
+                    const errorMsg = data.error ? `[${data.error.status}] ${data.error.message}` : `HTTP_FAILURE: ${resp.status}`;
+                    pushLog(`NEURAL ERROR: ${errorMsg}`, true);
                     return;
                 }
 
                 const ghostMsg = data.candidates[0].content.parts[0].text.trim();
                 state.shortTermMemory.push({ role: "model", parts: [{ text: ghostMsg }] });
-                pushLog(ghostMsg, false, true);
+                pushLog(ghostMsg, false, true); // Auto-mic triggered via third param
             } catch(e) { 
-                pushLog(`TRANSMISSION FATAL: ${e.message.toUpperCase()}`, true); 
+                pushLog(`SYSTEM FATAL: ${e.message.toUpperCase()}`, true); 
             }
         }
 
@@ -459,18 +484,7 @@
             }, 1000);
         }
 
-        function buyChallenge(type) {
-            const currentSP = (state.totalXP * 0.1) - state.spentSP;
-            if (currentSP < 50) { pushLog("PURCHASE FAILED: INSUFFICIENT SP"); return; }
-            if (timer.seconds <= 0 && !timer.active) {
-                const manualMins = parseInt(document.getElementById('t-input').value) || 0;
-                if (manualMins <= 0) { pushLog("ERROR: TIMER NOT INITIATED"); return; }
-                igniteTimer();
-            }
-            state.spentSP += 50; state.challengeActive = type;
-            pushLog(`PURCHASE SUCCESSFUL: ${type.toUpperCase()} ACTIVE`); updateUI();
-        }
-
+        function buyChallenge(type) { const currentSP = (state.totalXP * 0.1) - state.spentSP; if (currentSP < 50) { pushLog("PURCHASE FAILED: INSUFFICIENT SP"); return; } if (timer.seconds <= 0 && !timer.active) { const manualMins = parseInt(document.getElementById('t-input').value) || 0; if (manualMins <= 0) { pushLog("ERROR: TIMER NOT INITIATED"); return; } igniteTimer(); } state.spentSP += 50; state.challengeActive = type; pushLog(`PURCHASE SUCCESSFUL: ${type.toUpperCase()} ACTIVE`); updateUI(); }
         function resetTimer() { clearInterval(timer.interval); timer.seconds = 0; timer.active = false; document.getElementById('t-disp').innerText = "00:00"; document.getElementById('ignite-btn').innerText = "IGNITE"; pushLog("CHRONO: CYCLE RESET"); state.challengeActive = null; }
         function addTask() { const i = document.getElementById('task-input'); if(i.value.trim()) { state.tasks.push({text: i.value.trim(), done: false}); pushLog(`OBJECTIVE: ${i.value.trim().toUpperCase()} DEPLOYED`); i.value = ""; renderTasks(); } }
         function renderTasks() { document.getElementById('q-list').innerHTML = state.tasks.map((t, i) => `<div class="task-row"><span class="task-text ${t.done?'task-done':''}">${t.text.toUpperCase()}</span><div class="flex gap-4">${t.done ? `<i class="fa-solid fa-rotate-left text-zinc-600 cursor-pointer" onclick="undoTask(${i})"></i>` : `<i class="fa-solid fa-check text-red-600 cursor-pointer" onclick="completeTask(${i})"></i>`}</div></div>`).join(''); }
@@ -495,16 +509,7 @@
             list.innerHTML = defaultItems + customItems;
         }
 
-        function loadModel(idx) {
-            if (currentModel) scene.remove(currentModel);
-            const info = modelUrls[idx]; document.getElementById('model-name').innerText = info.name;
-            new THREE.GLTFLoader().load(info.url, (g) => { 
-                currentModel = g.scene; currentModel.scale.set(info.scale, info.scale, info.scale); currentModel.position.y = info.posY;
-                currentModel.traverse((c) => { if (c.isMesh) { c.material = new THREE.MeshPhongMaterial({ color: 0x050505, emissive: skinColors[state.activeSkin], wireframe: true, transparent: true, opacity: 0.6 }); } });
-                scene.add(currentModel);
-            });
-        }
-
+        function loadModel(idx) { if (currentModel) scene.remove(currentModel); const info = modelUrls[idx]; document.getElementById('model-name').innerText = info.name; new THREE.GLTFLoader().load(info.url, (g) => { currentModel = g.scene; currentModel.scale.set(info.scale, info.scale, info.scale); currentModel.position.y = info.posY; currentModel.traverse((c) => { if (c.isMesh) { c.material = new THREE.MeshPhongMaterial({ color: 0x050505, emissive: skinColors[state.activeSkin], wireframe: true, transparent: true, opacity: 0.6 }); } }); scene.add(currentModel); }); }
         function switchModel() { currentModelIndex = (currentModelIndex + 1) % modelUrls.length; loadModel(currentModelIndex); if(window.navigator.vibrate) window.navigator.vibrate(50); pushLog(`SYSTEM: ${modelUrls[currentModelIndex].name} ACTIVE`); }
         function init3D() { const container = document.getElementById('shadow-3d-container'); scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(45, container.clientWidth/container.clientHeight, 0.1, 1000); renderer = new THREE.WebGLRenderer({alpha:true, antialias:true}); renderer.setSize(container.clientWidth, container.clientHeight); container.appendChild(renderer.domElement); scene.add(new THREE.AmbientLight(0x404040, 2)); const l = new THREE.PointLight(0xff0000, 2.5); l.position.set(2, 2, 5); scene.add(l); loadModel(0); camera.position.z = 7; function anim(){ requestAnimationFrame(anim); if(currentModel) currentModel.rotation.y += 0.005; renderer.render(scene, camera); } anim(); }
         
@@ -513,9 +518,11 @@
             if(s) {
                 state = {...state, ...JSON.parse(s)};
                 if(!state.bonusAwarded) state.bonusAwarded = { water: false, salah: false };
+                if(!state.keyVault) state.keyVault = [];
                 state.salah.forEach((val, i) => { const cb = document.getElementById(`salah-${i}`); if(cb) cb.checked = val; });
             } else { state.spentSP = state.totalXP * 0.1; }
             document.getElementById('gemini-key-input').value = state.geminiKey; 
+            updateKeyDropdown();
             syncBattery(); updateUI(); init3D(); renderTasks(); renderArchive(); 
             setInterval(() => { const now = new Date(); document.getElementById('clock').innerText = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }); midnightCheck(); }, 1000); 
             pushLog("SYSTEM ONLINE", true); 
@@ -538,10 +545,8 @@
         async function syncBattery() { if (!navigator.getBattery) return; const b = await navigator.getBattery(); const upd = () => { document.getElementById('bat').innerText = `PWR: ${Math.round(b.level * 100)}%`; document.getElementById('bat-state').innerText = `Status: ${b.charging ? 'Charging' : 'Discharging'}`; }; upd(); b.addEventListener('levelchange', upd); b.addEventListener('chargingchange', upd); }
         
         function startGhostVoice() { 
-            const R = window.webkitSpeechRecognition || window.SpeechRecognition; 
-            if(!R) return; 
-            const r = new R(); 
-            const btn = document.getElementById('ghost-mic-btn'); 
+            const R = window.webkitSpeechRecognition || window.SpeechRecognition; if(!R) return; 
+            const r = new R(); const btn = document.getElementById('ghost-mic-btn'); 
             r.onstart = () => { btn.classList.add('mic-active'); if(window.navigator.vibrate) window.navigator.vibrate(30); }; 
             r.onresult = (e) => { document.getElementById('ai-query').value = e.results[0][0].transcript; askGhost(); }; 
             r.onend = () => { btn.classList.remove('mic-active'); }; 
